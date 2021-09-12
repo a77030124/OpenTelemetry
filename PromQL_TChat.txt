@@ -1,0 +1,27 @@
+[Change Channel]
+
+-- ALL
+(
+sum(increase(tchat_latency_sum{service_name="tchat", operation=~"Navigation:.*"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/v1/method.call/getRoomRoles"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/apps/externalComponents"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/v1/method.call/loadHistory"}[1m]))
+)
+/ 
+(sum(increase(tchat_calls_total{service_name="tchat", operation=~"Navigation:.*"}[1m])) > 0)
+or 
+sum(increase(tchat_calls_total{service_name="tchat", operation=~"Navigation:.*"}[1m])) > bool 0
+
+-- 分子
+(
+sum(increase(tchat_latency_sum{service_name="tchat", operation=~"Navigation:.*"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/v1/method.call/getRoomRoles"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/apps/externalComponents"}[1m])) +
+sum(increase(tchat_latency_sum{service_name="tchat", http_url=~".*/api/v1/method.call/loadHistory"}[1m]))
+)
+
+-- 分母
+(sum(increase(tchat_calls_total{service_name="tchat", operation=~"Navigation:.*"}[1m])) > 0)
+or 
+sum(increase(tchat_calls_total{service_name="tchat", operation=~"Navigation:.*"}[1m])) > bool 0
+
