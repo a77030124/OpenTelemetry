@@ -1,0 +1,116 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:55680"
+      http:
+        endpoint: "0.0.0.0:55681"
+        cors_allowed_origins:
+        - http://*
+        - https://*
+  
+  # Dummy receiver that's never used, because a pipeline is required to have one.
+  otlp/spanmetrics:
+    protocols:
+      grpc:
+        endpoint: "localhost:12345"
+        
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: tchat
+
+  jaeger:
+    endpoint: jaeger:14250
+    insecure: true
+
+  otlp/spanmetrics:
+    endpoint: "0.0.0.0:55680"
+    insecure: true
+    
+processors:
+  batch:
+    
+  attributes/startUp:
+    include:
+      match_type: strict
+      span_names: ["documentFetch"]
+    actions:
+      - key: metric.name
+        value: startUp
+        action: upsert
+  
+  attributes/sendMsg:
+    include:
+      match_type: regexp
+      attributes:
+        - { key: http.url, value: '.*/api/v1/method.call/sendMessage'}
+    actions:
+      - key: metric.name
+        value: sendMsg
+        action: upsert
+  
+  attributes/searchMsg:
+    include:
+      match_type: regexp
+      attributes:
+        - { key: http.url, value: '.*/api/v1/method.call/rocketchatSearch.search'}
+    actions:
+      - key: metric.name
+        value: searchMsg
+        action: upsert
+  
+  span/metricName:
+    name:
+      from_attributes: [metric.name]
+  
+  spanmetrics:
+    metrics_exporter: otlp/spanmetrics
+    #latency_histogram_buckets: [100ms, 500ms, 1s, 3s, 5s]
+    latency_histogram_buckets: [1s]
+
+    # Additional list of dimensions on top of:
+    # - service.name
+    # - operation
+    # - span.kind
+    # - status.code
+    dimensions:
+
+      # If the span is missing http.method, the processor will insert
+      # the http.method dimension with value 'GET'.
+      # For example, in the following scenario, http.method is not present in a span and so will be added as a dimension to the metric with value "GET":
+      # - promexample_calls{http_method="GET",operation="/Address",service_name="shippingservice",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_UNSET"} 1
+      #- name: http.method
+      #  default: GET
+
+      # If a default is not provided, the http.status_code dimension will be omitted
+      # if the span does not contain http.status_code.
+      # For example, consider a scenario with two spans, one span having http.status_code=200 and another missing http.status_code. Two metrics would result with this configuration, one with the http_status_code omitted and the other included:
+      # - promexample_calls{http_status_code="200",operation="/Address",service_name="shippingservice",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_UNSET"} 1
+      # - promexample_calls{operation="/Address",service_name="shippingservice",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_UNSET"} 1
+      #- name: http.status_code
+      - name: metric.name
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      # spanmetrics will pass on span data untouched to next processor
+      # while also accumulating metrics to be sent to the configured 'otlp/spanmetrics' exporter.
+      #processors: [spanmetrics]
+      processors: [attributes/startUp, attributes/sendMsg, attributes/searchMsg, span/metricName, spanmetrics]
+      exporters: [jaeger]
+
+    # This pipeline acts as a proxy to the 'metrics' pipeline below,
+    # allowing for further metrics processing if required.
+    metrics/spanmetrics:
+      # This receiver is just a dummy and never used.
+      # Added to pass validation requiring at least one receiver in a pipeline.
+      receivers: [otlp/spanmetrics]
+      exporters: [otlp/spanmetrics]
+
+    metrics:
+      receivers: [otlp]
+      # The metrics_exporter must be present in this list.
+      exporters: [prometheus]
+      
